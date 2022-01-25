@@ -64,13 +64,13 @@ def get_config(arg_string):
                   )
               ),
               training=dict(
-                  batch_size=32,
+                  batch_size=16, # was 32, reduced to allow eval to fit in memory
                   burnin_steps=5,
                   num_epochs=None,
                   lagging_vae=False
               ),
               evaluation=dict(
-                  batch_size=64,
+                  batch_size=32, # was 64, reduced to allow eval to fit in memory
               ),
               evaluation_metric=dict(
                   batch_size=5,

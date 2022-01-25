@@ -33,6 +33,17 @@ from physics_inspired_models.models import common
 
 AutoregressiveModel = common.autoregressive.TeacherForcingAutoregressiveModel
 
+import tensorflow as tf
+
+gpus = tf.config.experimental.list_physical_devices(device_type='GPU')
+for gpu in gpus:
+  tf.config.experimental.set_memory_growth(gpu, True)
+
+# tf.config.experimental.set_memory_growth(gpus[0], True)
+# tf.config.experimental.set_memory_growth(gpus[1], True)
+# tf.config.experimental.set_memory_growth(gpus[2], True)
+# tf.config.experimental.set_memory_growth(gpus[3], True)
+
 
 class HGNExperiment(experiment.AbstractExperiment):
   """HGN experiment."""
@@ -132,9 +143,9 @@ class HGNExperiment(experiment.AbstractExperiment):
     self._train_input = utils.py_prefetch(
         load_datasets.dataset_as_iter(self._build_train_input))
     self._burnin_fn = jax.pmap(
-        self._jax_burnin_fn, axis_name="i", donate_argnums=list(range(1, 4)))
+        self._jax_burnin_fn, axis_name="i")# , donate_argnums=list(range(1, 4)))
     self._step_fn = jax.pmap(
-        self._jax_train_step_fn, axis_name="i", donate_argnums=list(range(5)))
+        self._jax_train_step_fn, axis_name="i")#, donate_argnums=list(range(5)))
 
     if self._params is not None:
       logging.info("Not running initialization - loaded from checkpoint.")
@@ -203,7 +214,7 @@ class HGNExperiment(experiment.AbstractExperiment):
   def evaluate(self, global_step, rng, writer):
     """See base class."""
     logging.info("Starting evaluation.")
-    if self.mode == "eval":
+    if self.mode == "eval" or self.mode == "train_eval_multithreaded":
       if self._eval_input is None:
         self._initialize_eval()
         self._initialize_eval_vpt()
@@ -298,7 +309,6 @@ class HGNExperiment(experiment.AbstractExperiment):
     train_targets_length = (self.model.train_sequence_length -
                             reconstruction_skip)
     full_targets_length = full_forward_targets.shape[2]
-
     # Fully unroll the model and reconstruct the whole sequence, take the mean
     full_prediction = self._get_reconstructions(self._params, full_trajectory,
                                                 rng_key, prefix == "forward",
@@ -308,7 +318,7 @@ class HGNExperiment(experiment.AbstractExperiment):
 
     # In cases where the model can run backwards it is possible to reconstruct
     # parts which were indented to be skipped, so here we take care of that.
-    if full_prediction.mean().shape[2] > full_targets_length:
+    if full_prediction.shape[2] > full_targets_length:
       if prefix == "forward":
         full_prediction = jax.tree_map(
             lambda x: x[:, :, -full_targets_length:], full_prediction)
@@ -350,6 +360,7 @@ class HGNExperiment(experiment.AbstractExperiment):
         per_device_batch_size=batch_size,
         num_epochs=1,
         drop_remainder=False,
+        multi_device=True,
         shuffle=False,
         cache=False,
         keys_to_preserve=["image"]
@@ -373,6 +384,7 @@ class HGNExperiment(experiment.AbstractExperiment):
             tfrecord_prefix="test",
             sub_sample_length=None,
             per_device_batch_size=self.config.evaluation_metric.batch_size,
+            multi_device=True,
             num_epochs=None,
             drop_remainder=False,
             cache=False,
@@ -409,6 +421,7 @@ class HGNExperiment(experiment.AbstractExperiment):
             tfrecord_prefix="test",
             sub_sample_length=None,
             per_device_batch_size=self.config.evaluation_vpt.batch_size,
+            multi_device=True,
             num_epochs=None,
             drop_remainder=False,
             cache=False,
